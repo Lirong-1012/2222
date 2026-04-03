@@ -85,7 +85,6 @@
             border-left: 3px solid rgba(255,255,255,0.7);
         }
         
-        /* 新增：数据更新日期显示 */
         .last-update-tag {
             position: absolute;
             top: 20px;
@@ -139,7 +138,6 @@
             box-shadow: 0 0 0 3px var(--primary-light);
         }
         
-        /* 新增：Top New SKU 开关样式 */
         .switch-container {
             display: flex;
             align-items: center;
@@ -291,15 +289,12 @@
 
 <header>
     <div class="header-inner">
-        <h1>
-            👗 Shopee Fashion 女装选品清单
-            <span class="badge">External Data</span>
-        </h1>
+        <h1>👗 Shopee Fashion 女装选品清单 <span class="badge">Internal Data</span></h1>
         <div class="header-desc">
-         ✨ <strong>精选热销品新品</strong> · 涵盖多站点，帮你快速锁定爆款选品<br>
+            ✨ <strong>精选热销品新品</strong> · 涵盖多站点，帮你快速锁定爆款选品<br>
             📊 日销量与日销售额采用区间脱敏展示，<strong>日销售额已统一为人民币 (¥)</strong><br>
             🔒 提示：当前页面仅供内部选品参考，不提供外部商品跳转链接。
-        </div>
+       </div>
         <div class="last-update-tag" id="lastUpdateDisplay">数据更新中...</div>
     </div>
 </header>
@@ -325,8 +320,8 @@
             <input type="number" id="maxPrice" placeholder="Max" oninput="debouncedFilter()" style="width:70px;">
             
             <select id="sortOrder" onchange="applyFilters()">
-                <option value="default">默认排序</option>
                 <option value="dateDesc">日期倒序 (最新) ↑</option>
+                <option value="default">默认排序</option>
                 <option value="priceAsc">价格 ↑</option>
                 <option value="priceDesc">价格 ↓</option>
                 <option value="salesDesc">日销量 ↓</option>
@@ -386,19 +381,19 @@
     const clean = (s) => (s || "").toString().replace(/[算法"=\t]/g, '').trim();
     const toNum = (s) => parseFloat(clean(s)) || 0;
 
-    // 映射数据，增加 L3 类目解析
-    const mapData = (arr) => ({
-        title: arr[0], price_min: toNum(arr[1]), price_max: toNum(arr[2]),
-        imgUrl: arr[3], link: arr[4], l1: arr[5], l2: arr[6],
-        update_date: arr[7], itemid: arr[8], tag: arr[9],
-        site: arr[10], seller_type: arr[11], is_official_shop: arr[12],
-        daily_sales_min: toNum(arr[13]), daily_sales_max: toNum(arr[14]),
-        daily_rev_min: toNum(arr[15]), daily_rev_max: toNum(arr[16]),
-        ado_mom: clean(arr[17]),
-        // 假设 CSV 结构中，L3 紧跟在 L2 之后（原本 L2 是 arr[6]，新 L3 设为 arr[18]）
-        // ！！！请确保您的 CSV 最后一列是 L3，或者调整下标！！！
-        l3: clean(arr[18] || "") 
-    });
+    // 核心逻辑：确保 L3 索引正确
+    const mapData = (arr) => {
+        return {
+            title: clean(arr[0]), price_min: toNum(arr[1]), price_max: toNum(arr[2]),
+            imgUrl: clean(arr[3]), link: clean(arr[4]), l1: clean(arr[5]), l2: clean(arr[6]),
+            update_date: clean(arr[7]), itemid: clean(arr[8]), tag: clean(arr[9]),
+            site: clean(arr[10]), seller_type: clean(arr[11]), is_official_shop: clean(arr[12]),
+            daily_sales_min: toNum(arr[13]), daily_sales_max: toNum(arr[14]),
+            daily_rev_min: toNum(arr[15]), daily_rev_max: toNum(arr[16]),
+            ado_mom: clean(arr[17]),
+            l3: clean(arr[18]) // 第 19 列
+        };
+    };
 
     function fmtRange(min, max, prefix = '', suffix = '') {
         if (!min && !max) return '—';
@@ -410,8 +405,6 @@
         try {
             const res = await fetch('data.csv');
             const text = await res.text();
-            
-            // 解析 CSV
             const rows = text.split(/\r?\n/).filter(l => l.trim());
             products = rows.slice(1).map(line => {
                 let r = [], cur = '', q = false;
@@ -424,8 +417,7 @@
                 return r;
             }).filter(a => a[0]);
 
-            // 3. 计算并展示最新上传时间
-            const dates = products.map(p => new Date(clean(p[7]))).filter(d => d instanceof Date && !isNaN(d));
+            const dates = products.map(p => new Date(clean(p[7]))).filter(d => !isNaN(d));
             if (dates.length > 0) {
                 const latest = new Date(Math.max(...dates));
                 document.getElementById('lastUpdateDisplay').textContent = `数据最后更新: ${latest.toLocaleDateString()}`;
@@ -440,10 +432,14 @@
 
     function initFilters() {
         const l1s = [...new Set(products.map(p => clean(p[5])))].filter(Boolean);
-        l1s.forEach(v => document.getElementById('l1Filter').innerHTML += `<option value="${v}">${v}</option>`);
+        const l1Filter = document.getElementById('l1Filter');
+        l1Filter.innerHTML = '<option value="">L1 类目</option>';
+        l1s.sort().forEach(v => l1Filter.innerHTML += `<option value="${v}">${v}</option>`);
         
         const tags = [...new Set(products.map(p => clean(p[9])))].filter(Boolean);
-        tags.forEach(v => document.getElementById('tagFilter').innerHTML += `<option value="${v}">${v}</option>`);
+        const tagFilter = document.getElementById('tagFilter');
+        tagFilter.innerHTML = '<option value="">全部标签</option>';
+        tags.sort().forEach(v => tagFilter.innerHTML += `<option value="${v}">${v}</option>`);
         
         updateL2();
     }
@@ -452,19 +448,23 @@
         const l1 = document.getElementById('l1Filter').value;
         const s = document.getElementById('l2Filter');
         s.innerHTML = '<option value="">L2 类目</option>';
-        [...new Set(products.filter(p => !l1 || clean(p[5]) === l1).map(p => clean(p[6])))].filter(Boolean)
-            .forEach(v => { s.innerHTML += `<option value="${v}">${v}</option>`; });
+        const filteredL2 = [...new Set(products.filter(p => !l1 || clean(p[5]) === l1).map(p => clean(p[6])))].filter(Boolean);
+        filteredL2.sort().forEach(v => { s.innerHTML += `<option value="${v}">${v}</option>`; });
         updateL3();
     }
 
-    // 1. 新增 L3 联动
     function updateL3() {
         const l1 = document.getElementById('l1Filter').value;
         const l2 = document.getElementById('l2Filter').value;
         const s = document.getElementById('l3Filter');
         s.innerHTML = '<option value="">L3 类目</option>';
-        [...new Set(products.filter(p => (!l1 || clean(p[5]) === l1) && (!l2 || clean(p[6]) === l2)).map(p => clean(p[18])))].filter(Boolean)
-            .forEach(v => { s.innerHTML += `<option value="${v}">${v}</option>`; });
+        // 关键修复：确保 L3 基于 L1 和 L2 的共同过滤
+        const filteredL3 = [...new Set(products.filter(p => 
+            (!l1 || clean(p[5]) === l1) && 
+            (!l2 || clean(p[6]) === l2)
+        ).map(p => clean(p[18])))].filter(Boolean);
+        
+        filteredL3.sort().forEach(v => { s.innerHTML += `<option value="${v}">${v}</option>`; });
     }
 
     function render(dataList, page = 1) {
@@ -476,7 +476,7 @@
         pageData.forEach(arr => {
             const item = mapData(arr);
             const flag = siteFlag[item.site] || '🌐';
-            const isNegative = item.ado_mom.includes('-');
+            const isNeg = item.ado_mom.includes('-');
             
             const card = document.createElement('div');
             card.className = 'card';
@@ -488,24 +488,18 @@
                 </div>
                 <div class="info">
                     <div class="item-title" title="${item.title}">${item.title}</div>
-                    <div class="price-row">
-                        <span class="price-label">价格</span>
-                        <span class="price-value">$${item.price_min}${item.price_max > item.price_min ? ' ~ $'+item.price_max : ''}</span>
-                    </div>
+                    <div class="price-row"><span class="price-label">价格</span><span class="price-value">$${item.price_min}${item.price_max > item.price_min ? ' ~ $'+item.price_max : ''}</span></div>
                     <div class="meta-row">
                         ${item.seller_type ? `<span class="pill ${item.seller_type === 'CNCB' ? 'pill-seller-cncb' : 'pill-seller-local'}">${item.seller_type}</span>` : ''}
                         ${item.is_official_shop === 'Y' ? `<span class="pill pill-official">⭐ Official</span>` : ''}
                         ${item.l3 ? `<span class="pill pill-cat">${item.l3}</span>` : (item.l2 ? `<span class="pill pill-cat">${item.l2}</span>` : '')}
-                        ${item.ado_mom ? `<span class="pill ${isNegative ? 'pill-ado-neg' : 'pill-ado-pos'}">${isNegative?'📉':'📈'} ${item.ado_mom}</span>` : ''}
+                        ${item.ado_mom ? `<span class="pill ${isNeg ? 'pill-ado-neg' : 'pill-ado-pos'}">${isNeg?'📉':'📈'} ${item.ado_mom}</span>` : ''}
                     </div>
                     <div class="stats-row">
                         <div class="stat-box"><div class="stat-label">日销量</div><div class="stat-value sales-val">${fmtRange(item.daily_sales_min, item.daily_sales_max, '', ' 件')}</div></div>
                         <div class="stat-box"><div class="stat-label">日销售额</div><div class="stat-value revenue-val">${fmtRange(item.daily_rev_min, item.daily_rev_max, '¥')}</div></div>
                     </div>
-                    <div class="footer-row">
-                        <span>📅 ${item.update_date}</span>
-                        <span class="itemid-box" onclick="copyId('${item.itemid}')">ID: ${item.itemid}</span>
-                    </div>
+                    <div class="footer-row"><span>📅 ${item.update_date}</span><span class="itemid-box" onclick="copyId('${item.itemid}')">ID: ${item.itemid}</span></div>
                 </div>`;
             grid.appendChild(card);
         });
@@ -540,7 +534,7 @@
 
         filteredData = products.filter(arr => {
             const i = mapData(arr);
-            const matchTopNew = !isTopNew || (i.tag && i.tag.toLowerCase().includes("new")); // 2. Top New SKU 逻辑 (根据tag含New)
+            const matchTopNew = !isTopNew || (i.tag && i.tag.toLowerCase().includes("new"));
             
             return (!q || i.title.toLowerCase().includes(q) || i.itemid.includes(q)) &&
                    (!l1 || i.l1 === l1) && (!l2 || i.l2 === l2) && (!l3 || i.l3 === l3) &&
@@ -549,7 +543,6 @@
                    (i.price_min >= minP && i.price_min <= maxP);
         });
 
-        // 1. 默认排序及新增日期倒序
         const sort = document.getElementById('sortOrder').value;
         if (sort === 'dateDesc') filteredData.sort((a,b) => new Date(clean(b[7])) - new Date(clean(a[7])));
         else if (sort === 'priceAsc') filteredData.sort((a,b) => toNum(a[1]) - toNum(b[1]));
@@ -561,8 +554,15 @@
     }
 
     function clearFilters() {
-        document.querySelectorAll('input:not([type="checkbox"]), select').forEach(el => el.value = '');
+        document.getElementById('searchInput').value = '';
+        document.getElementById('l1Filter').value = '';
+        document.getElementById('minPrice').value = '';
+        document.getElementById('maxPrice').value = '';
+        document.getElementById('siteFilter').value = '';
+        document.getElementById('sellerTypeFilter').value = '';
+        document.getElementById('tagFilter').value = '';
         document.getElementById('topNewFilter').checked = false;
+        document.getElementById('sortOrder').value = 'dateDesc';
         updateL2(); applyFilters();
     }
 
